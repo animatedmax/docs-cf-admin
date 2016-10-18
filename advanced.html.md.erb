@@ -1,0 +1,78 @@
+---
+title: Troubleshooting Diego with Veritas
+owner: Diego
+---
+
+TK: Break this out into two topics, t shooting with veritas and t shooting with consul.
+
+Q's: 
+
+Under using Veritas  with PCF: 
+What is the validation command?
+For getting the BBS component creds, is it under diego_database- ..?
+How do you configure veritas to be executable after downloading?
+
+## Using Consul with PCF
+
+Consul provides service discovery features to Diego and Elastic Runtime components. Sometimes you may want to interact with consul to find out if components are registering themselves with consul and at what locations. For example, you may want to find out if the Windows Diego components are interacting with the Linux Diego components properly.
+
+To use consul with PCF, follow these steps:
+
+1. From Ops Manager, navigate to the Elastic Runtime **Status** tab. From the list displayed, identify the host IP for a VM running the consul agent, such as Diego cells. (The example below uses `DIEGO-CELL-IP` in place of an actual IP address.) You can also use a deployment manifest to find the IP address.
+
+2. Get the VM credentials for the VM via the Elastic Runtime **Credentials** tab. To do this, click on **Link to Credential** and locate the identity/password combination listed for the `diego-cell` name. It should be `vcap` and a password.
+
+3. SSH into the host with the command `ssh vcap@DIEGO-CELL-IP` and enter the credentials you acquired in the previous step. To get root access, run `sudo su` with the vcap user credentials again.
+
+4. Use `monit summary` to verify that `consul_agent` is running:
+
+	<pre class="terminal">
+	$ monit summary
+	The Monit daemon 5.2.4 uptime: 6d 20h 3m
+
+	Process 'etcd'					running
+	Process 'bbs'					running
+	Process 'consul_agent'			running
+	Process 'metron_agent'			running
+	</pre>	
+
+
+## Using Veritas with PCF 
+
+This section describes the process for configuring Diego to interact with BBS for troubleshooting purposes. The Diego BBS component runs the API endpoint that other Diego components and clients use to store and query the state of all currently active tasks and long-running processes. For more information about the BBS component, see the [Database VMs](../diego-architecture.html#database-vms) section of the Diego Architecture topic.
+
+The BBS uses protocol buffers over HTTPS. It also requires client certificates. The veritas CLI can interface with the BBS by taking responsibility for using the right endpoints and translating protocol buffers into human-readable CLI input and output. 
+
+To use Veritas with PCF, follow these steps:
+
+1. From Ops Manager, navigate to the Elastic Runtime **Status** tab. From the list displayed, identify the host IP for the Diego BBS component. (The example below uses `DIEGO-BBS-IP` in place of an actual IP address.) You can also use a deployment manifest or run `dig bbs.service.cf.internal` from a BOSH VM that has the consul-agent running to find the IP address.
+
+2. Get the VM credentials for the Diego BBS component via the Elastic Runtime **Credentials** tab. To do this, click on **Link to Credential** and locate the identity/password combination listed for the `diego-database` name. It should be `vcap` and a password.
+
+3. SSH into the Diego BBS host with the command `ssh vcap@DIEGO-BBS-IP` and enter the credentials you acquired in the previous step. To get root access, run `sudo su` with the vcap user password again.
+
+4. Follow instructions in the [veritas README](https://github.com/pivotal-cf-experimental/veritas#downloading-on-a-bosh-vm) to download veritas and configure it to be executable.
+
+5. Once downloaded and configured, validate that veritas works by setting environmental variables and using the `dump-store` command:
+
+	<pre class="terminal">
+	$ BBS_ENDPOINT=https://10.85.34.95:8889 
+	$ BBS_CERT_FILE=/var/vcap/jobs/bbs/config/certs/etcd/client.crt 
+	$ BBS_KEY_FILE=/var/vcap/jobs/bbs/config/certs/etcd/client.key 
+	$ ./veritas dump-store
+	</pre>
+
+Your output should look something like this:
+
+<pre class="terminal">
+Tasks
+LRPs
+0bd8dcdb-0169-4522-8edc-5527f039e57c-487e235a-65c0-4274-93d0-bbb4ac245e39
+1 preloaded:cflinuxfs2 PRIVILEGED (1024 MB, 1024 MB, 10 CPU)
+8080 =>
+0: 855cbdb7-2999-4c8e-6b4d-b1091bb15f38 diego_cell-partition-101c5632daf700672ab5-1 [RUNNING for 60h19m13.071138748s]
+24f8ee8b-38f7-45ba-a5a4-6b40780fe429-f2273cd0-cb07-466c-bd9a-bb15a3469ff8
+1 preloaded:cflinuxfs2 PRIVILEGED (1024 MB, 1024 MB, 10 CPU)
+8080 => boot.horse.wild.cf-app.com
+0: 6e5c3afa-a62b-4b24-448a-e4cc00d0e1a6 diego_cell-partition-101c5632daf700672ab5-2 [RUNNING for 60h20m7.779488116s]
+</pre>
